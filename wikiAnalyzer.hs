@@ -85,9 +85,9 @@ firstLink = do
   
 beforeLink = manyTill (many notLink) (try $ string "[[") 
 
-notLink = try italics
-      <|> try doubleCurlyBrac
-      <|> try parenthetical 
+notLink = italics
+      <|> doubleCurlyBrac
+      <|> parenthetical 
       <|> (many1 normalText)
 
 normalText = noneOf "'[{("
@@ -99,11 +99,11 @@ notFollowedByItself c = try ( do x <- char c
                                  notFollowedBy $ char c
                                  return x)
  
-italics = between (string "''") (string "''") (many $ noneOf "'")
-doubleCurlyBrac = between (string "{{") (string "}}") (many $ noneOf "}")
+italics = between (try $ string "''") (try $ string "''") (many $ noneOf "'")
+doubleCurlyBrac = (try $ string "{{") >> manyTill (notLink) (try $ string "}}") >> return []
 --doubleCurlyBrac = manyTill middleChars (try $ string "}}")
 --    where middleChars = many 
-parenthetical = between (char '(') (char ')') (many $ noneOf ")")
+parenthetical = between (try $ char '(') (try $ char ')') (many $ noneOf ")")
 
 endLink = optional (char '#' >> (many $ noneOf "]|")) >> 
             optional (char '|' >> optional (many $ noneOf "]")) >>
