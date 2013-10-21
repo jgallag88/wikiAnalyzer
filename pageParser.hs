@@ -1,8 +1,9 @@
 --Parse wikipedia page for links in specified wiki markup language
-
+module PageParser (philoLink, WikiParseErr (BadFormat, NoLinks)) where
 {-# LANGUAGE NoMonomorphismRestriction #-}
 
 import Text.Parsec
+import Text.Parsec.Text
 import qualified Data.Text as T
 import Control.Applicative ((*>))
 
@@ -10,7 +11,10 @@ data WikiNode = Template [WikiNode]
                 | Parenthetical [WikiNode]
                 | Italics [WikiNode]
                 | Link WikiNode
-                | Content String deriving Show
+                | Content T.Text deriving Show
+
+data WikiParseErr = BadFormat T.Text
+                    | NoLinks deriving Show
 
 --General link format:
 --[[the Link]]
@@ -27,28 +31,38 @@ data WikiNode = Template [WikiNode]
 --Parenthetical - not special markup, just normal paretheses 
 --(parenthisized text)
 
------- Link Extractor ----- 
 -- Get the first top level link from the wiki AST
-philoLink :: T.Text -> Either ParseError WikiNode
-philoLink page = fmap firstLink $ parse wikiAST "Bad wiki format" page
-    where firstLink = head . filter notLink
+
+philoLink :: T.Text -> Either WikiParseErr T.Text
+philoLink page = 
+    case ast of
+        Left err -> Left . BadFormat $ (T.pack . show) err
+        Right [] -> Left NoLinks
+        Right ls -> Right . linkText . head $ ls
+    where ast = fmap (filter notLink) $ parse wikiAST "Bad Format" page
           notLink (Link _) = True
           notLink _ = False
+          linkText (Link (Content link)) = link
 
 --Build Abstract Syntax Tree of wikipedia page, using markup
 wikiAST = many node
 
 node = template 
-        <|> italics'
-        <|> parenthetical'
+        <|> italics
+        <|> parenthetical
         <|> content
-        <|> link'
+        <|> link
 
+--Parsers for constructs we are interested in
 template = fmap Template $ between (try rTmpltTok) (try lTmpltTok) wikiAST
-italics' = fmap Italics $ (try italTok) *> manyTill node (try italTok)
-parenthetical' = fmap Parenthetical $ between (try rParenTok) (try lParenTok) wikiAST
-link' = fmap Link $ between (try rLinkTok) (lLinkTok) content 
-content = fmap Content $ many1 (notFollowedBy (choice reserved) *> anyChar)
+
+italics = fmap Italics $ (try italTok) *> manyTill node (try italTok)
+
+parenthetical = fmap Parenthetical $ between (try rParenTok) (try lParenTok) wikiAST
+
+link = fmap Link $ between (try rLinkTok) (lLinkTok) content 
+
+content = fmap (Content . T.pack) $ many1 (notFollowedBy (choice reserved) *> anyChar)
  
 --Wiki markup tokens
 rTmpltTok = string "{{"
@@ -61,42 +75,7 @@ lLinkTok = string "]]"
 
 reserved = [rTmpltTok, lTmpltTok, italTok, rParenTok, lParenTok, rLinkTok, lLinkTok]
 
-getLink :: T.Text -> Either ParseError T.Text
-getLink = parse firstLink "No Links"
-
-firstLink = do  
-    beforeLink 
-    link <- many $ noneOf "]#|"
-    endLink
-    return $ T.pack link
-  
-beforeLink = manyTill (many notLink) (try $ string "[[") 
-
-notLink = italics
-      <|> doubleCurlyBrac
-      <|> parenthetical 
-      <|> (many1 normalText)
-
-normalText = noneOf "'[{("
-           <|> notFollowedByItself '['
-           <|> notFollowedByItself '\''
-           <|> notFollowedByItself '{'
-
-notFollowedByItself c = try ( do x <- char c
-                                 notFollowedBy $ char c
-                                 return x)
- 
-italics = between (try $ string "''") (try $ string "''") (many $ noneOf "'")
-doubleCurlyBrac = (try $ string "{{") >> manyTill (notLink) (try $ string "}}") >> return []
---doubleCurlyBrac = manyTill middleChars (try $ string "}}")
---    where middleChars = many 
-parenthetical = between (try $ char '(') (try $ char ')') (many $ noneOf ")")
-
-endLink = optional (char '#' >> (many $ noneOf "]|")) >> 
-            optional (char '|' >> optional (many $ noneOf "]")) >>
-            string "]]"
-
-getLinkTest :: [Either ParseError WikiNode]
+getLinkTest :: [Either WikiParseErr T.Text]
 getLinkTest = fmap (philoLink . T.pack) testList 
     where testList = ["['{  [[realLink]]"
                      , "''asdf''daa''asdf[[NOT_REAL_LINK]]as''[[realLink]]asdf"
@@ -105,5 +84,5 @@ getLinkTest = fmap (philoLink . T.pack) testList
                      , "nested Double Curly Brac{{  {{ }} [[NOT_REAL_LINK]] }} [[realLink]]"
                      , "  '  ' [[realLink]]"
                      , "()  ([[NOT_REAL_LINK]]   ) [[realLink]] "
+                     , "No link in this line"
                      ]
-
