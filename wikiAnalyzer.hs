@@ -11,10 +11,6 @@ import qualified Text.XML.Expat.Tree as XPat
 import qualified Text.XML.Expat.Format as XPat
 import qualified Text.XML.Expat.Proc as XPat
 import qualified Data.ByteString.Lazy as L
-import Text.Parsec
-import Text.Parsec.Text
-import qualified Data.Text as T
-import Debug.Trace
 
 data Page = FullPage { title :: T.Text,
                        link :: T.Text}
@@ -67,56 +63,4 @@ extractTitle p = fmap extract elem
 extractText (XPat.Element _ _ textList) = T.concat $ XPat.onlyText textList
 
 getPages tree = XPat.findChildren (T.pack "page") tree
-
---General link format:
---[[the Link]]
---[[the Link|display Text]]
---[[the Link#subLink]]
---info on wiki link formating: http://meta.wikimedia.org/wiki/Help:Link 
-
-getLink :: T.Text -> Either ParseError T.Text
-getLink = parse firstLink "No Links"
-
-firstLink = do  
-    beforeLink 
-    link <- many $ noneOf "]#|"
-    endLink
-    return $ T.pack link
-  
-beforeLink = manyTill (many notLink) (try $ string "[[") 
-
-notLink = italics
-      <|> doubleCurlyBrac
-      <|> parenthetical 
-      <|> (many1 normalText)
-
-normalText = noneOf "'[{("
-           <|> notFollowedByItself '['
-           <|> notFollowedByItself '\''
-           <|> notFollowedByItself '{'
-
-notFollowedByItself c = try ( do x <- char c
-                                 notFollowedBy $ char c
-                                 return x)
- 
-italics = between (try $ string "''") (try $ string "''") (many $ noneOf "'")
-doubleCurlyBrac = (try $ string "{{") >> manyTill (notLink) (try $ string "}}") >> return []
---doubleCurlyBrac = manyTill middleChars (try $ string "}}")
---    where middleChars = many 
-parenthetical = between (try $ char '(') (try $ char ')') (many $ noneOf ")")
-
-endLink = optional (char '#' >> (many $ noneOf "]|")) >> 
-            optional (char '|' >> optional (many $ noneOf "]")) >>
-            string "]]"
-
-getLinkTest :: [Either ParseError T.Text]
-getLinkTest = fmap (getLink . T.pack) testList 
-    where testList = ["['{  [[realLink]]"
-                     , "''asdf''daa''asdf[[NOT_REAL_LINK]]as''[[realLink]]asdf"
-                     , "aa''aa[[NOT_REAL_LINK]]asfd''[[realLink]]"
-                     , "  {{aaaa[[NOT_REAL_LINK]]aaaa}}aaa[[realLink]]"
-                     , "nested Double Curly Brac{{  {{ }} [[NOT_REAL_LINK]] }} [[realLink]]"
-                     , "  '  ' [[realLink]]"
-                     , "()  ([[NOT_REAL_LINK]]   ) [[realLink]] "
-                     ]
 

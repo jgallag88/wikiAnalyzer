@@ -1,6 +1,8 @@
 --Parse wikipedia page for links in specified wiki markup language
-module PageParser (philoLink, WikiParseErr (BadFormat, NoLinks)) where
+
 {-# LANGUAGE NoMonomorphismRestriction #-}
+
+module PageParser (philoLink, WikiParseErr (BadFormat, NoLinks)) where
 
 import Text.Parsec
 import Text.Parsec.Text
