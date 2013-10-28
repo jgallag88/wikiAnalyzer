@@ -11,6 +11,8 @@ import qualified Text.XML.Expat.Tree as XPat
 import qualified Text.XML.Expat.Format as XPat
 import qualified Text.XML.Expat.Proc as XPat
 import qualified Data.ByteString.Lazy as L
+import qualified Data.Text as T
+import PageParser
 
 data Page = FullPage { title :: T.Text,
                        link :: T.Text}
@@ -33,7 +35,7 @@ main = do
     xmlFile <- L.readFile wikiFile
     let (xmlTree, mErr) = XPat.parse XPat.defaultParseOptions xmlFile :: (XPat.UNode T.Text, Maybe XPat.XMLParseError) 
     let pageList = fmap createPage $ getPages xmlTree
-    return $ take 20 $ filter isFullPage pageList
+    return $ take 20 $ pageList
 
 createPage :: XPat.NodeG [] T.Text T.Text -> Page
 createPage p = case extractTitle p of 
@@ -42,7 +44,7 @@ createPage p = case extractTitle p of
             Just r -> Redirect { title = t, redirectLink = r }
             Nothing -> case extractLink p of 
                     Just (Right l) -> FullPage { title = t, link = l}
-                    Just (Left err) -> Stub { title = t `T.append` (T.pack $ show err) `T.append` (T.pack $ show $ fmap extractText $ XPat.findElement (T.pack "text") p)}
+                    Just (Left err) -> Stub { title = t `T.append` (errToText err)}
                     Nothing -> Stub { title = t }
  
 --Extract Redirect Link (if it exists) from XML Page element
@@ -51,7 +53,7 @@ extractRedir p = fmap extract elem
     where extract = \(XPat.Element _ [(_,link)] _) -> link
           elem = XPat.findChild (T.pack "redirect") p
 
-extractLink p = fmap (getLink . extractText) elems
+extractLink p = fmap (philoLink . extractText) elems
     where elems = XPat.findElement (T.pack "text") p
 
 --Extract Title from XML Page element
