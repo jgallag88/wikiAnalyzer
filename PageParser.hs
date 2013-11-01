@@ -13,7 +13,8 @@ import Control.Applicative ((*>))
 data WikiNode = Template [WikiNode]
                 | Parenthetical [WikiNode]
                 | Italics [WikiNode]
-                | Link [WikiNode]
+                | Ref [WikiNode]
+                | Link T.Text 
                 | Content T.Text deriving Show
 
 data WikiParseErr = BadFormat T.Text
@@ -28,18 +29,18 @@ lazyMany p filename contents = lm state0
             Right s -> s
             Left e -> error $ show e
         lm state = case parse p' "" $ T.pack "" of
-            Right ([], st) -> []
-            Right (node, st) -> (Right node):(lm st)
+            Right (Nothing, st) -> []
+            Right (Just node, st) -> (Right node):(lm st)
             Left err -> [Left err]
             where p' = setParserState state >> (end <|> p'')
                   end = do
-                            eof 
+                            x <- eof 
                             state' <- getParserState 
-                            return ([], state')
+                            return (Nothing, state')
                   p'' = do
                             x <- p
                             state' <- getParserState
-                            return (x, state')
+                            return (Just x, state')
 {--
 lazyMany :: Parser a -> SourceName -> T.Text -> [Either ParseError a]
 lazyMany p filename contents = lm state0
@@ -74,17 +75,19 @@ lazyMany p filename contents = lm state0
 
 --TODO: Make parser fully lazy by eliminating Either (for robustness, and maybe speed)
 -- Get the first top level link from the wiki AST
+
 philoLink :: T.Text -> Either WikiParseErr T.Text
 philoLink page = 
     case links of
         [] -> Left NoLinks
         (Left err):_ -> Left . BadFormat $ (T.pack . show) err
         (Right l):_ -> Right . linkText $ l
-    where links = filter notLink $ lazyMany wikiAST "Bad Format" page
-          notLink (Right [(Link _)]) = True
+    where links = filter notLink $ lazyMany node "Bad Format" page
+          notLink (Right (Link _)) = True
           notLink (Left _) = True --TODO: call this function something else b/c it allows Lefts
           notLink _ = False
-          linkText [(Link [Content link])] = link
+          linkText (Link link) = link
+          linkText x = error $ show x
 
 --Build Abstract Syntax Tree of wikipedia page, using markup
 wikiAST = many node
@@ -92,6 +95,7 @@ wikiAST = many node
 node = template 
         <|> italics
         <|> parenthetical
+        <|> ref
         <|> content
         <|> link
 
@@ -102,9 +106,12 @@ italics = fmap Italics $ (try italTok) *> manyTill node (try italTok)
 
 parenthetical = fmap Parenthetical $ between (try rParenTok) (try lParenTok) wikiAST
 
-link = fmap Link $ between (try rLinkTok) (lLinkTok) wikiAST 
+ref = fmap Ref $ between (try rRefTok) (try lRefTok) wikiAST
+
+link = fmap (Link . T.pack) $ between (try rLinkTok) (lLinkTok) (many ((notFollowedBy lLinkTok) *> anyChar))
 
 content = fmap (Content . T.pack) $ many1 (notFollowedBy (choice reserved) *> anyChar)
+    where reserved = [rTmpltTok, lTmpltTok, italTok, rParenTok, lParenTok, rLinkTok, lLinkTok, lRefTok, rRefTok]
 
 --Wiki markup tokens
 rTmpltTok = string "{{"
@@ -112,10 +119,10 @@ lTmpltTok = string "}}"
 italTok = string "''"
 rParenTok = string "("
 lParenTok = string ")"
+rRefTok = string "<ref>"
+lRefTok = string "</ref>"
 rLinkTok = string "[["
 lLinkTok = string "]]"
-
-reserved = [rTmpltTok, lTmpltTok, italTok, rParenTok, lParenTok, rLinkTok, lLinkTok]
 
 getLinkTest :: [Either WikiParseErr T.Text]
 getLinkTest = fmap (philoLink . T.pack) testList 
@@ -127,5 +134,6 @@ testList = ["['{  [[realLink]]"
              , "nested Double Curly Brac{{  {{ }} [[NOT_REAL_LINK]] }} [[realLink]]"
              , "  '  ' [[realLink]]"
              , "()  ([[NOT_REAL_LINK]]   ) [[realLink]] "
+             , "<ref> [[NOT_REAL_LINK]] </ref> [[realLink]]"
              , "No link in this line"
             ]

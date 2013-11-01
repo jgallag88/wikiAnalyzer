@@ -35,7 +35,7 @@ main = do
     xmlFile <- L.readFile wikiFile
     let (xmlTree, mErr) = XPat.parse XPat.defaultParseOptions xmlFile :: (XPat.UNode T.Text, Maybe XPat.XMLParseError) 
     let pageList = fmap createPage $ getPages xmlTree
-    return $ take 20 $ pageList
+    return $ take 100 $ pageList
 
 createPage :: XPat.NodeG [] T.Text T.Text -> Page
 createPage p = case extractTitle p of 
