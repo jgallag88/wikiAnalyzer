@@ -14,7 +14,7 @@ data WikiNode = Template [WikiNode]
                 | Parenthetical [WikiNode]
                 | Italics [WikiNode]
                 | Ref [WikiNode]
-                | Link T.Text 
+                | Link [WikiNode] 
                 | Content T.Text deriving Show
 
 data WikiParseErr = BadFormat T.Text
@@ -41,23 +41,6 @@ lazyMany p filename contents = lm state0
                             x <- p
                             state' <- getParserState
                             return (Just x, state')
-{--
-lazyMany :: Parser a -> SourceName -> T.Text -> [Either ParseError a]
-lazyMany p filename contents = lm state0
-    where
-        state0 = case parse getParserState filename contents of -- get an initial state
-            Right s -> s
-            Left e -> error $ show e
-        lm state = case parse p' "" $ T.pack "" of
-                Right [] st -> [Right []]
-                Right node st -> node:(lm state')
-                Left err -> [Left err]
-        p' = setParserState state >> choice [eof >> return [],
-                do
-                    x <- p
-                    state' <- getParserState
-                    return (x:lm state')]
---}
 --General link format:
 --[[the Link]]
 --[[the Link|display Text]]
@@ -81,13 +64,16 @@ philoLink page =
     case links of
         [] -> Left NoLinks
         (Left err):_ -> Left . BadFormat $ (T.pack . show) err
-        (Right l):_ -> Right . linkText $ l
+        (Right (Link [Content l])):_ -> Right l
     where links = filter notLink $ lazyMany node "Bad Format" page
-          notLink (Right (Link _)) = True
+          notLink (Right (Link [Content link])) = not $ beginsWithFile link
           notLink (Left _) = True --TODO: call this function something else b/c it allows Lefts
           notLink _ = False
-          linkText (Link link) = link
-          linkText x = error $ show x
+
+beginsWithFile :: T.Text -> Bool
+beginsWithFile x = case parse (string "File:") "" x of
+                        Right _ -> True
+                        Left _ -> False
 
 --Build Abstract Syntax Tree of wikipedia page, using markup
 wikiAST = many node
@@ -108,7 +94,7 @@ parenthetical = fmap Parenthetical $ between (try rParenTok) (try lParenTok) wik
 
 ref = fmap Ref $ between (try rRefTok) (try lRefTok) wikiAST
 
-link = fmap (Link . T.pack) $ between (try rLinkTok) (lLinkTok) (many ((notFollowedBy lLinkTok) *> anyChar))
+link = fmap Link $ between (try rLinkTok) (lLinkTok) wikiAST
 
 content = fmap (Content . T.pack) $ many1 (notFollowedBy (choice reserved) *> anyChar)
     where reserved = [rTmpltTok, lTmpltTok, italTok, rParenTok, lParenTok, rLinkTok, lLinkTok, lRefTok, rRefTok]
