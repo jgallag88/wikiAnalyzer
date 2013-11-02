@@ -2,7 +2,7 @@
 
 {-# LANGUAGE NoMonomorphismRestriction #-}
 
-module PageParser (philoLink, WikiParseErr (BadFormat, NoLinks), errToText) where
+module PageParser (philoLink, lazyMany, WikiNode, node, WikiParseErr (BadFormat, NoLinks), errToText) where
 
 import Text.Parsec
 --TODO: compare performance of Text.Lazy
@@ -15,6 +15,7 @@ data WikiNode = Template [WikiNode]
                 | Italics [WikiNode]
                 | Ref [WikiNode]
                 | Link [WikiNode] 
+                | Comment T.Text
                 | Content T.Text deriving Show
 
 data WikiParseErr = BadFormat T.Text
@@ -82,6 +83,7 @@ node = template
         <|> italics
         <|> parenthetical
         <|> ref
+        <|> comment
         <|> content
         <|> link
 
@@ -96,8 +98,11 @@ ref = fmap Ref $ between (try rRefTok) (try lRefTok) wikiAST
 
 link = fmap Link $ between (try rLinkTok) (lLinkTok) wikiAST
 
+comment = fmap (Comment . T.pack) $ between (try lCommentTok) (try rCommentTok) commentText
+    where commentText = many $ notFollowedBy rCommentTok *> anyChar
+
 content = fmap (Content . T.pack) $ many1 (notFollowedBy (choice reserved) *> anyChar)
-    where reserved = [rTmpltTok, lTmpltTok, italTok, rParenTok, lParenTok, rLinkTok, lLinkTok, lRefTok, rRefTok]
+    where reserved = [rTmpltTok, lTmpltTok, italTok, rParenTok, lParenTok, rLinkTok, lLinkTok, lRefTok, rRefTok, lCommentTok]
 
 --Wiki markup tokens
 rTmpltTok = string "{{"
@@ -107,6 +112,8 @@ rParenTok = string "("
 lParenTok = string ")"
 rRefTok = string "<ref>"
 lRefTok = string "</ref>"
+rCommentTok = string "-->"
+lCommentTok = string "<!--"
 rLinkTok = string "[["
 lLinkTok = string "]]"
 
@@ -121,5 +128,6 @@ testList = ["['{  [[realLink]]"
              , "  '  ' [[realLink]]"
              , "()  ([[NOT_REAL_LINK]]   ) [[realLink]] "
              , "<ref> [[NOT_REAL_LINK]] </ref> [[realLink]]"
+             , "<!--This is just a comment [[NOT_REAL_LINK]] --> [[realLink]]"
              , "No link in this line"
             ]
