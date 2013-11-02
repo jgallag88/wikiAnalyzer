@@ -13,6 +13,7 @@ import qualified Text.XML.Expat.Proc as XPat
 import qualified Data.ByteString.Lazy as L
 import qualified Data.Text as T
 import PageParser
+import Data.Maybe
 
 data Page = FullPage { title :: T.Text,
                        link :: T.Text}
@@ -35,6 +36,7 @@ main = do
     xmlFile <- L.readFile wikiFile
     let (xmlTree, mErr) = XPat.parse XPat.defaultParseOptions xmlFile :: (XPat.UNode T.Text, Maybe XPat.XMLParseError) 
     let pageList = fmap createPage $ getPages xmlTree
+    putStrLn $ flip examinePageAST (T.pack "Autism") $ getPages xmlTree
     return $ take 10 $ filter isStub pageList
 
 createPage :: XPat.NodeG [] T.Text T.Text -> Page
@@ -65,4 +67,15 @@ extractTitle p = fmap extract elem
 extractText (XPat.Element _ _ textList) = T.concat $ XPat.onlyText textList
 
 getPages tree = XPat.findChildren (T.pack "page") tree
+
+-- Debug wiki AST of a particular page
+examinePageAST tree pageName = show ast 
+    where ast = lazyMany node "" $ page . head $ filter rightPage tree
+          page p = extractText $ fromJust $ XPat.findElement (T.pack "text") p   
+          rightPage p = case extractTitle p of
+                             Just t -> t == pageName
+                             Nothing -> False
+          
+
+
 
