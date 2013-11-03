@@ -82,6 +82,7 @@ wikiAST = many node
 node = template 
         <|> italics
         <|> parenthetical
+        <|> emptyRef
         <|> ref
         <|> comment
         <|> content
@@ -94,15 +95,18 @@ italics = fmap Italics $ (try italTok) *> manyTill node (try italTok)
 
 parenthetical = fmap Parenthetical $ between (try rParenTok) (try lParenTok) wikiAST
 
-ref = fmap Ref $ between (try rRefTok) (try lRefTok) wikiAST
+emptyRef = fmap Ref $ try $ string "<ref" *> many (noneOf "/>") *> string "/>" *> return []
+
+ref = fmap Ref $ between (try openTag) (try rRefTok) wikiAST
+    where openTag = lRefTok >> (many $ noneOf ">") >> char '>'
 
 link = fmap Link $ between (try rLinkTok) (lLinkTok) wikiAST
 
 comment = fmap (Comment . T.pack) $ between (try lCommentTok) (try rCommentTok) commentText
-    where commentText = many $ notFollowedBy rCommentTok *> anyChar
+    where commentText = many (notFollowedBy rCommentTok *> anyChar)
 
 content = fmap (Content . T.pack) $ many1 (notFollowedBy (choice reserved) *> anyChar)
-    where reserved = [rTmpltTok, lTmpltTok, italTok, rParenTok, lParenTok, rLinkTok, lLinkTok, lRefTok, rRefTok, lCommentTok]
+    where reserved = map try [rTmpltTok, lTmpltTok, italTok, rParenTok, lParenTok, rLinkTok, lLinkTok, rRefTok, lRefTok, lCommentTok]
 
 --Wiki markup tokens
 rTmpltTok = string "{{"
@@ -110,10 +114,10 @@ lTmpltTok = string "}}"
 italTok = string "''"
 rParenTok = string "("
 lParenTok = string ")"
-rRefTok = string "<ref>"
-lRefTok = string "</ref>"
-rCommentTok = string "-->"
+lRefTok = string "<ref"
+rRefTok = string "</ref>"
 lCommentTok = string "<!--"
+rCommentTok = string "-->"
 rLinkTok = string "[["
 lLinkTok = string "]]"
 
@@ -127,7 +131,8 @@ testList = ["['{  [[realLink]]"
              , "nested Double Curly Brac{{  {{ }} [[NOT_REAL_LINK]] }} [[realLink]]"
              , "  '  ' [[realLink]]"
              , "()  ([[NOT_REAL_LINK]]   ) [[realLink]] "
-             , "<ref> [[NOT_REAL_LINK]] </ref> [[realLink]]"
-             , "<!--This is just a comment [[NOT_REAL_LINK]] --> [[realLink]]"
+             , "<ref name=asdf> [[NOT_REAL_LINK]] </ref> [[realLink]]"
+             , " <ref name=adsf/> [[realLink]]"
+             , "  <!--This is just a comment) [[NOT_REAL_LINK]] --> [[realLink]]"
              , "No link in this line"
             ]
