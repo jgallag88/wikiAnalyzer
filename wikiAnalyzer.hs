@@ -27,6 +27,9 @@ isFullPage _ = False
 isStub (Stub _) = True
 isStub _ = False
 
+isRedirect (Redirect _ _) = True
+isRedirect _ = False
+
 wikiFile = "/media/OS/Users/John/Desktop/enwiki-20130904-pages-articles.xml"
 sampleXML = openFile "sample.xml" ReadMode >>= hGetContents
 wikiXMLString = openFile wikiFile ReadMode >>= hGetContents
@@ -36,7 +39,8 @@ main = do
     xmlFile <- L.readFile wikiFile
     let (xmlTree, mErr) = XPat.parse XPat.defaultParseOptions xmlFile :: (XPat.UNode T.Text, Maybe XPat.XMLParseError) 
     let pageList = fmap createPage $ getPages xmlTree
-    putStrLn $ flip examinePageAST (T.pack "Autism") $ getPages xmlTree
+    putStrLn $ flip examinePageAST (T.pack "Asterism") $ getPages xmlTree
+    putStrLn $ show . countTypes $ take 1000 pageList
     return $ take 10 $ filter isStub pageList
 
 createPage :: XPat.NodeG [] T.Text T.Text -> Page
@@ -75,7 +79,9 @@ examinePageAST tree pageName = show ast
           rightPage p = case extractTitle p of
                              Just t -> t == pageName
                              Nothing -> False
-          
 
-
-
+-- Count types of pages
+countTypes :: [Page] -> (Int, Int, Int) 
+countTypes ps = (,,) (length $ filter isFullPage ps) 
+                     (length $ filter isRedirect ps)
+                     (length $ filter isStub ps)
