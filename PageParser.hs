@@ -14,7 +14,7 @@ data WikiNode = Template [WikiNode]
                 | Parenthetical [WikiNode]
                 | Italics [WikiNode]
                 | Ref [WikiNode]
-                | Link [WikiNode] 
+                | Link [WikiNode]
                 | Comment T.Text
                 | Content T.Text deriving Show
 
@@ -100,14 +100,19 @@ emptyRef = fmap Ref $ try $ string "<ref" *> many (noneOf "/>") *> string "/>" *
 ref = fmap Ref $ between (try openTag) (try rRefTok) wikiAST
     where openTag = lRefTok >> (many $ noneOf ">") >> char '>'
 
-link = fmap Link $ between (try rLinkTok) (lLinkTok) wikiAST
+link = fmap Link $ between (try lLinkTok) (rLinkTok) (many (link <|> linkText))
+    where linkText = untilKey $ map try [lLinkTok, rLinkTok]
 
 comment = fmap (Comment . T.pack) $ between (try lCommentTok) (try rCommentTok) commentText
     where commentText = many (notFollowedBy rCommentTok *> anyChar)
 
-content = fmap (Content . T.pack) $ many1 (notFollowedBy (choice reserved) *> anyChar)
-    where reserved = map try [rTmpltTok, lTmpltTok, italTok, rParenTok, lParenTok, rLinkTok, lLinkTok, rRefTok, lRefTok, lCommentTok]
+--Any content until we reach one of the reserved keywords
+content = untilKey reserved
+    where reserved = map try [rTmpltTok, lTmpltTok, italTok, rParenTok, lParenTok, rLinkTok,
+                              lLinkTok, rRefTok, lRefTok, lCommentTok]
 
+untilKey keywords = fmap (Content . T.pack) $ many1 (notFollowedBy (choice keywords) *> anyChar)
+    
 --Wiki markup tokens
 rTmpltTok = string "{{"
 lTmpltTok = string "}}"
@@ -118,8 +123,8 @@ lRefTok = string "<ref"
 rRefTok = string "</ref>"
 lCommentTok = string "<!--"
 rCommentTok = string "-->"
-rLinkTok = string "[["
-lLinkTok = string "]]"
+lLinkTok = string "[["
+rLinkTok = string "]]"
 
 getLinkTest :: [Either WikiParseErr T.Text]
 getLinkTest = fmap (philoLink . T.pack) testList 
