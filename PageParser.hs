@@ -89,7 +89,8 @@ node = template
         <|> link
 
 --Parsers for constructs we are interested in
-template = fmap Template $ between (try rTmpltTok) (try lTmpltTok) wikiAST
+template = fmap Template $ between (try rTmpltTok) (try lTmpltTok) (many (template <|> templateText))
+    where templateText = untilKey $ map try [lTmpltTok, rTmpltTok]
 
 italics = fmap Italics $ (try italTok) *> manyTill node (try italTok)
 
