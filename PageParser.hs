@@ -98,8 +98,9 @@ parenthetical = fmap Parenthetical $ between (try rParenTok) (try lParenTok) wik
 
 emptyRef = fmap Ref $ try $ string "<ref" *> many (noneOf "/>") *> string "/>" *> return []
 
-ref = fmap Ref $ between (try openTag) (try rRefTok) wikiAST
+ref = fmap Ref $ between (try openTag) (try rRefTok) (many (ref <|> refText))
     where openTag = lRefTok >> (many $ noneOf ">") >> char '>'
+          refText = untilKey $ map try [rRefTok]
 
 link = fmap Link $ between (try lLinkTok) (rLinkTok) (many (link <|> linkText))
     where linkText = untilKey $ map try [lLinkTok, rLinkTok]
