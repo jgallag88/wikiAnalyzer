@@ -6,6 +6,8 @@
 --TODO: Add quickcheck for parsec stuff
 --TODO: Change from monadic to applicative style where possible in parsec stuff
 
+{-# LANGUAGE BangPatterns #-}
+
 import System.IO
 import qualified Text.XML.Expat.Tree as XPat
 import qualified Text.XML.Expat.Format as XPat
@@ -14,6 +16,7 @@ import qualified Data.ByteString.Lazy as L
 import qualified Data.Text as T
 import PageParser
 import Data.Maybe
+import Data.List (foldl')
 
 data Page = FullPage { title :: T.Text,
                        link :: T.Text}
@@ -82,6 +85,8 @@ examinePageAST tree pageName = show ast
 
 -- Count types of pages
 countTypes :: [Page] -> (Int, Int, Int) 
-countTypes ps = (,,) (length $ filter isFullPage ps) 
-                     (length $ filter isRedirect ps)
-                     (length $ filter isStub ps)
+countTypes ps = foldl' f (0,0,0) ps
+    where f (!a,!b,!c) p
+                    | isFullPage p = (a+1,b,c)
+                    | isRedirect p = (a,b+1,c)
+                    | isStub p = (a,b,c+1) 
